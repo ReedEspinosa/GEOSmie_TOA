@@ -4,7 +4,7 @@
  Utility to create GEOS/GOCART-compatible aerosol optics look-up tables
  Top-level caller for optics table generation code
  Usage example:
-  runoptics.py --name bc.json
+  runoptics.py --name geosparticles/bc.json
  will produce an output file named "optics_bc.geosmie.nc"
 
   runoptics -h

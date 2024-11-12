@@ -79,6 +79,7 @@ def integrateShapes(data, fracs0):
   fracs = np.array(fracs0) / np.sum(fracs0) # normalize
   for key in data.variables.keys():
     thisdata = data.variables[key][:]
+#     assert thisdata.shape[0]==len(fracs), 'Number of bins specified for shape distribution does not match number of shape nodal points for optics.'
     if len(thisdata.shape) == 4:
       ret[key] = np.tensordot(fracs, thisdata, axes = (0, 0))
     elif len(thisdata.shape) == 6:
@@ -746,7 +747,7 @@ def fun(partID0, datatype, oppfx, oppclassic):
       print('kernel shape distribution parameter (\'shape_dist\') not defined')
       sys.exit()
 
-    spdata = readSpheroid(params['kernel_params']['path'])
+    spdata = readSpheroid(kparams['path'])
     distpath = kparams['shape_dist']
     spfracs = np.loadtxt(distpath, usecols=[0], unpack=True, ndmin=1)
     print('Integrating kernels...')
