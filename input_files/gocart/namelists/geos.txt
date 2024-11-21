@@ -1,0 +1,7 @@
+input_files/gocart/geosparticles/bc.json
+input_files/gocart/geosparticles/brc.json
+input_files/gocart/geosparticles/oc.json
+input_files/gocart/geosparticles/su.json
+input_files/gocart/geosparticles/du.json
+input_files/gocart/geosparticles/ni.json
+input_files/gocart/geosparticles/ss.json
