@@ -1,3 +1,6 @@
 *.pyc
 *.nc
-
+Kemppinen1447.pdf
+pymiecoated/build/*
+pymiecoated/*.egg*
+pymiecoated/dist/*.egg*

@@ -203,15 +203,13 @@ def find_closest_ind(myList, myNumber, typ='none',ide=''):
       return pos - 1
 
 
-def createNCDF(ncdfID, oppfx, rarr, rharr, lambarr, ang, oppclassic):
+def createNCDF(ncdf, oppfx, rarr, rharr, lambarr, ang, oppclassic):
 
   if oppclassic:
-    ncdf = netCDF4.Dataset(os.path.join(oppfx, 'optics_%s.geosmie.legacy.nc'%ncdfID), 'w')
     radiusNm = 'radius'
     lambdaNm = 'lambda'
     npolNm   = 'nPol'
   else:
-    ncdf = netCDF4.Dataset(os.path.join(oppfx, 'optics_%s.geosmie.nc'%ncdfID), 'w')
     radiusNm = 'bin'
     lambdaNm = 'wavelength'
     npolNm   = 'p'
@@ -717,7 +715,6 @@ def fun(partID0, datatype, oppfx, oppclassic):
   """
   Define parameters for netcdf creation
   """
-
   # Angles phase functions will be written at
   if mode =='mie':
     # Define output scattering angles
@@ -729,40 +726,65 @@ def fun(partID0, datatype, oppfx, oppclassic):
     ang = np.linspace(0., 180., 181)
 
   costarr = np.cos(np.radians(ang))
-  minlam = lambarr[0]
-  maxlam = lambarr[-1]
 
-  opncdf = createNCDF(ncdfID, oppfx, radiusarr, rh, lambarr, ang[:], oppclassic)
+  verStr = '.legacy' if oppclassic else ''
+  nc4Filename = os.path.join(oppfx, 'optics_%s.geosmie%s.nc' % (ncdfID,verStr))
+  with netCDF4.Dataset(nc4Filename, mode='w') as opncdf:    
+    createNCDF(opncdf, oppfx, radiusarr, rh, lambarr, ang[:], oppclassic)
+    if useGrasp: xxarr, drarr, globalSpheroid = initialize_spheroid_kernels(params)
+    # Loop over the particle size bins/modes
+    process_particle_size_bins(opncdf, radindarr, params, lambarr, rh, partMr, partMi,
+      waterMr, waterMi, mode, useGrasp, oppclassic, allkeys, xxarr, drarr, scatkeys,
+      elekeys, extrakeys, nlscalarkeys, costarr, globalSpheroid)
 
-  if useGrasp:
-    # if we are using a spheroid kernel system then override xxarr with
-    # what is actually available from the spheroids
 
-    kparams = params['kernel_params']
+def initialize_spheroid_kernels(params):
+  """
+  Initialize spheroid kernel system and override xxarr based on spheroid data.
 
-    if 'path' not in kparams:
-      print('kernel path parameter (\'path\') not defined')
-      sys.exit()
-    if 'shape_dist' not in kparams:
-      print('kernel shape distribution parameter (\'shape_dist\') not defined')
-      sys.exit()
+  Args:
+      params (dict): Dictionary containing kernel parameters.
+    
+  Returns:
+      tuple: xxarr, drarr, globalSpheroid
+  """
+  kparams = params['kernel_params']
 
-    spdata = readSpheroid(kparams['path'])
-    distpath = kparams['shape_dist']
-    spfracs = np.loadtxt(distpath, usecols=[0], unpack=True, ndmin=1)
-    print('Integrating kernels...')
-    globalSpheroid = integrateShapes(spdata, spfracs)
-    print('Done')
+  # Ensure required parameters are present
+  if 'path' not in kparams:
+    print("Kernel path parameter ('path') not defined")
+    sys.exit()
+  if 'shape_dist' not in kparams:
+    print("Kernel shape distribution parameter ('shape_dist') not defined")
+    sys.exit()
 
-    xxarr = spdata.variables['x'][:]
-    drarr = getDR(xxarr) 
+  # Read spheroid data and integrate kernels
+  spdata = readSpheroid(kparams['path'])
+  distpath = kparams['shape_dist']
+  spfracs = np.loadtxt(distpath, usecols=[0], unpack=True, ndmin=1)
+  print('Integrating kernels...')
+  globalSpheroid = integrateShapes(spdata, spfracs)
+  print('Done')
 
-  # Loop over the particle size bins/modes
+  # Extract variables for xxarr and compute drarr
+  xxarr = spdata.variables['x'][:]
+  drarr = getDR(xxarr)
+
+  return xxarr, drarr, globalSpheroid
+    
+    
+def process_particle_size_bins(opncdf, radindarr, params, lambarr, rh, partMr,
+      partMi, waterMr, waterMi, mode, useGrasp, oppclassic, allkeys, xxarr, drarr,
+      scatkeys, elekeys, extrakeys, nlscalarkeys, costarr, globalSpheroid):
+
+  minmaxlam = [lambarr[0], lambarr[-1]]
+  
   for radind in radindarr:
     print("=== === === USING RADIND %d"%radind)
 
+    # Initialize xxarr and drarr for the current particle size bin
     if not useGrasp:
-      xxarr, drarr = initializeXarr(params, radind, minlam, maxlam)
+      xxarr, drarr = initializeXarr(params, radind, minmaxlam[0], minmaxlam[1])
 
     if mode == 'mie':
       multipleMie = MultipleMie(xxarr, None, costarr)
@@ -772,205 +794,200 @@ def fun(partID0, datatype, oppfx, oppclassic):
     for key in allkeys:
       allvals[key] = np.zeros(opncdf.variables[key][:].shape)
 
-    """
-    TODO!
-    parallelization over lambda, i.e. have a single worker evaluate each lambda since they are independent of each other
-    therefore, we should move this huge block of code under the loop into a separate function that takes lambda as a 
-    parameter along with everything else it needs
-    """
-
-    iii = 0
-    for li, lam in enumerate(lambarr):
-      print("+++++ LAMBDA %.2e +++++"%lam)
-      mr0 = [partMr[i](lam) for i in range(len(partMr))]
-      mi0 = [-partMi[i](lam) for i in range(len(partMi))]
-      #mi0 = -partMi(lam) # defined as negative 
-      nref0 = [complex(mr0[i], mi0[i]) for i in range(len(mr0))]
-
-      xconv = 2 * np.pi / lam
-      rarr = xxarr / xconv
-
-      if params['rhDep']['type'] == 'trivial':
-        nrefwater = complex(1,0) # placeholder, never used
-      else:
-        watermr0 = waterMr(lam)
-        watermi0 = waterMi(lam)
-        nrefwater = complex(watermr0, watermi0)
-
-      if 'maxrh' in params:
-        maxrh = params['maxrh']
-        capind = np.where(np.array(rh) > maxrh)[0]
-        rh = np.array(rh)
-        rh[capind] = maxrh
-
       """
-      Get Dry Particle Properties
+      TODO!
+      parallelization over lambda, i.e. have a single worker evaluate each lambda since they are independent of each other
+      therefore, we should move this huge block of code under the loop into a separate function that takes lambda as a 
+      parameter along with everything else it needs
       """
-      mr0, mi0, gf, rrat0 = getHumidRefractiveIndex(params, radind, 0, rh, nref0, nrefwater)
-      psd0, reff_mass0, rLow0, rUp0 = calculatePSD(params, radind, 0., rh, xxarr, drarr, rrat0, lam)
 
+      iii = 0
+      for li, lam in enumerate(lambarr):
+        print("+++++ LAMBDA %.2e +++++"%lam)
+        mr0 = [partMr[i](lam) for i in range(len(partMr))]
+        mi0 = [-partMi[i](lam) for i in range(len(partMi))]
+        #mi0 = -partMi(lam) # defined as negative 
+        nref0 = [complex(mr0[i], mi0[i]) for i in range(len(mr0))]
 
-      """
-      Start RH loop
-      """
-      for rhi, onerh in enumerate(rh):
-        pparam = params['psd']['params']
-        rparams = params['rhDep']
+        xconv = 2 * np.pi / lam
+        rarr = xxarr / xconv
 
-        if params['rhDep']['type'] == 'trivial' and rhi > 0: # same values for all rh, save in computation
-          copyDryValues(opncdf, allkeys, scatkeys, elekeys, extrakeys, nlscalarkeys, radind, rhi, li, oppclassic)
-          continue
-
-        mr, mi, gf, rrat = getHumidRefractiveIndex(params, radind, rhi, rh, nref0, nrefwater)
-
-        psd, ref, rLow, rUp = calculatePSD(params, radind, onerh, rh, xxarr, drarr, rrat, lam)
-
-        """
-        ***********
-        
-        Start the calculations
-
-        ***********
-        """
-
-        rhop00 = params['rhop0'] # read from a file
-        if isinstance(rhop00, list): 
-          # rhop0 is defined separately for each size bin, read the right one
-          rhop0 = rhop00[radind]
+        if params['rhDep']['type'] == 'trivial':
+          nrefwater = complex(1,0) # placeholder, never used
         else:
-          rhop0 = rhop00
+          watermr0 = waterMr(lam)
+          watermi0 = waterMi(lam)
+          nrefwater = complex(watermr0, watermi0)
 
-        rhow  = 1000. # density of water, constant
-        rhop = rrat ** 3. * rhop0 + (1. - rrat ** 3.) * rhow
+        if 'maxrh' in params:
+          maxrh = params['maxrh']
+          capind = np.where(np.array(rh) > maxrh)[0]
+          rh = np.array(rh)
+          rh[capind] = maxrh
 
-        if mode == 'mie':
-          allret = []
-          for refi in range(len(mr)):
-            rawret = rawMie(multipleMie, scatkeys, scalarkeys, lam, mr[refi], mi[refi], None, costarr)
-            allret.append(rawret)
-          
-          if len(allret) == 1:
-            # make compatible with multibin psd
-            allret = [allret[0] for i in range(len(psd))] # multibin
+        """
+        Get Dry Particle Properties
+        """
+        mr0, mi0, gf, rrat0 = getHumidRefractiveIndex(params, radind, 0, rh, nref0, nrefwater)
+        psd0, reff_mass0, rLow0, rUp0 = calculatePSD(params, radind, 0., rh, xxarr, drarr, rrat0, lam)
 
-          # separate integration step
-          ret = integratePSD(multipleMie.xArr, allret, psd, pparam['fracs'][radind], lam, reff_mass0, rhop0, rhop)
 
-        elif useGrasp:
-          ret0 = globalSpheroid
+        """
+        Start RH loop
+        """
+        for rhi, onerh in enumerate(rh):
+          pparam = params['psd']['params']
+          rparams = params['rhDep']
 
-          allmr = ret0['mr'][:]
-          allmi = -ret0['mi'][:] # change sign
+          if params['rhDep']['type'] == 'trivial' and rhi > 0: # same values for all rh, save in computation
+            copyDryValues(opncdf, allkeys, scatkeys, elekeys, extrakeys, nlscalarkeys, radind, rhi, li, oppclassic)
+            continue
 
-          keys = ['ext', 'abs', 'sca', 'qext', 'qabs', 'qsca', 'qb', 'g', 'cext', 'csca', 'cabs']
-#          keys = ['ext', 'abs', 'sca', 'qext', 'qsca', 'qb', 'g', 'cext', 'csca']
-          scatelekeys = ['scama']
-          scatelems = ['s11', 's22', 's33', 's44', 's12', 's34'] # order Mischenko's code expects
-          ret1 = {}
-          for kk in keys:
-            valmat = ret0[kk][:,:,:]
-            val = get_interpolated(valmat, mr, mi, allmr, allmi)
-            ret1[kk] = val
+          mr, mi, gf, rrat = getHumidRefractiveIndex(params, radind, rhi, rh, nref0, nrefwater)
 
-          for kk in scatelekeys:
-            for scati in range(len(scatelems)):
-              if scati == 0:
-                dodebug = True
-              else:
-                dodebug = False
-              valmat = ret0[kk][:,:,:,scati,:]
-              val = get_interpolated(valmat, mr, mi, allmr, allmi, debug=dodebug)
-              ret1[scatelems[scati]] = val
+          psd, ref, rLow, rUp = calculatePSD(params, radind, onerh, rh, xxarr, drarr, rrat, lam)
 
-          ret1['qsca'] = ret1['qsca']
+          """
+          ***********
+    
+          Start the calculations
 
-          ret1['csca'] = np.array(ret1['qsca']) * np.pi * rarr ** 2
-          ret1['cext'] = np.array(ret1['qext']) * np.pi * rarr ** 2
+          ***********
+          """
 
-          ret1 = [ret1 for i in range(len(psd))] # multibin
-          if len(pparam['fracs']) == 1:
-            # if only one set of fracs is given we always use it
-            usefracs = pparam['fracs'][0]
+          rhop00 = params['rhop0'] # read from a file
+          if isinstance(rhop00, list): 
+            # rhop0 is defined separately for each size bin, read the right one
+            rhop0 = rhop00[radind]
           else:
-            usefracs = pparam['fracs'][radind]
-          ret = integratePSD(xxarr, ret1, psd, usefracs, lam, reff_mass0, rhop0, rhop)
+            rhop0 = rhop00
 
-        qsca = np.array(ret['qsca'])
-        qext = np.array(ret['qext'])
-        qb = np.array(ret['qb'])
-        g  = np.array(ret['g'])
+          rhow  = 1000. # density of water, constant
+          rhop = rrat ** 3. * rhop0 + (1. - rrat ** 3.) * rhow
 
-        """
-        Calculate extra post-integration variables
-        """
+          if mode == 'mie':
+            allret = []
+            for refi in range(len(mr)):
+              rawret = rawMie(multipleMie, scatkeys, scalarkeys, lam, mr[refi], mi[refi], None, costarr)
+              allret.append(rawret)
+      
+            if len(allret) == 1:
+              # make compatible with multibin psd
+              allret = [allret[0] for i in range(len(psd))] # multibin
 
-        ret['lidar_ratio'] = qext / qb * 4 * np.pi
+            # separate integration step
+            ret = integratePSD(multipleMie.xArr, allret, psd, pparam['fracs'][radind], lam, reff_mass0, rhop0, rhop)
 
-        ret['ssa'] = qsca / qext
+          elif useGrasp:
+            ret0 = globalSpheroid
 
-        ret['rLow'] = rLow
-        ret['rUp'] = rUp
+            allmr = ret0['mr'][:]
+            allmi = -ret0['mi'][:] # change sign
 
-        pbackorder = ['s11', 's12', 's33', 's34', 's22', 's44']
-        ret['pback'] = np.array([ret[key][-1] for key in pbackorder])
+            keys = ['ext', 'abs', 'sca', 'qext', 'qabs', 'qsca', 'qb', 'g', 'cext', 'csca', 'cabs']
+  #          keys = ['ext', 'abs', 'sca', 'qext', 'qsca', 'qb', 'g', 'cext', 'csca']
+            scatelekeys = ['scama']
+            scatelems = ['s11', 's22', 's33', 's44', 's12', 's34'] # order Mischenko's code expects
+            ret1 = {}
+            for kk in keys:
+              valmat = ret0[kk][:,:,:]
+              val = get_interpolated(valmat, mr, mi, allmr, allmi)
+              ret1[kk] = val
 
-        ret['growth_factor'] = gf
+            for kk in scatelekeys:
+              for scati in range(len(scatelems)):
+                valmat = ret0[kk][:,:,:,scati,:]
+                val = get_interpolated(valmat, mr, mi, allmr, allmi, debug=(scati==0))
+                ret1[scatelems[scati]] = val
 
-        mass0 = ret['volume'] * rhop0
+            ret1['qsca'] = ret1['qsca']
 
-        ret['rhop'] = rhop
-        ret['area'] = ret['area'] / mass0
-        ret['volume'] = ret['volume'] / mass0
+            ret1['csca'] = np.array(ret1['qsca']) * np.pi * rarr ** 2
+            ret1['cext'] = np.array(ret1['qext']) * np.pi * rarr ** 2
 
-        # mr and mi are arrays since we might have multimodal PSD with different components as modes
-        ret['refreal'] = mr[0]
-        ret['refimag'] = -np.abs(mi[0]) # force negative to be consistent with Pete's tables
-
-        pback = np.array(ret['pback'])
-#        print(rh[rhi],mr, mi, qext, qsca, g, qb*np.pi)
-#        print(rh[rhi],ref,rLow, rUp)
-
-#       Support for legacy format lookup tables
-        if oppclassic:
-          for key in allkeys: # we can also save to allvals and write later
-            if key in scatkeys:
-              iii += 1
-              opncdf.variables[key][radind, rhi, li, :] = ret[key][:]
-            elif key in elekeys:
-              opncdf.variables[key][:, radind, rhi, li] = ret[key][:]
-            elif key in scalarkeys + extrakeys:
-              opncdf.variables[key][radind, rhi, li] = ret[key]
-            elif key in nlscalarkeys:
-              opncdf.variables[key][radind, rhi] = ret[key]
+            ret1 = [ret1 for i in range(len(psd))] # multibin
+            if len(pparam['fracs']) == 1:
+              # if only one set of fracs is given we always use it
+              usefracs = pparam['fracs'][0]
             else:
-              print("key category missing: %s"%key)
-              sys.exit()
-        else:
-          for key in allkeys: # we can also save to allvals and write later
-            if key in scatkeys:
-              iii += 1
-              opncdf.variables[key][radind, li, rhi, :] = ret[key][:]
-            elif key in elekeys:
-              opncdf.variables[key][radind, li, rhi, :] = ret[key][:]
-            elif key in scalarkeys + extrakeys:
-              opncdf.variables[key][radind, li, rhi] = ret[key]
-            elif key in nlscalarkeys:
-              opncdf.variables[key][radind, rhi] = ret[key]
-            else:
-              print("key category missing: %s"%key)
-              sys.exit()
-        # end rh loop
-      # end lambda loop
-    # end radind loop
+              usefracs = pparam['fracs'][radind]
+            ret = integratePSD(xxarr, ret1, psd, usefracs, lam, reff_mass0, rhop0, rhop)
 
-  opncdf.close()
+          qsca = np.array(ret['qsca'])
+          qext = np.array(ret['qext'])
+          qb = np.array(ret['qb'])
+          g  = np.array(ret['g'])
+
+          """
+          Calculate extra post-integration variables
+          """
+
+          ret['lidar_ratio'] = qext / qb * 4 * np.pi
+
+          ret['ssa'] = qsca / qext
+
+          ret['rLow'] = rLow
+          ret['rUp'] = rUp
+
+          pbackorder = ['s11', 's12', 's33', 's34', 's22', 's44']
+          ret['pback'] = np.array([ret[key][-1] for key in pbackorder])
+
+          ret['growth_factor'] = gf
+
+          mass0 = ret['volume'] * rhop0
+
+          ret['rhop'] = rhop
+          ret['area'] = ret['area'] / mass0
+          ret['volume'] = ret['volume'] / mass0
+
+          # mr and mi are arrays since we might have multimodal PSD with different components as modes
+          ret['refreal'] = mr[0]
+          ret['refimag'] = -np.abs(mi[0]) # force negative to be consistent with Pete's tables
+
+          pback = np.array(ret['pback'])
+  #        print(rh[rhi],mr, mi, qext, qsca, g, qb*np.pi)
+  #        print(rh[rhi],ref,rLow, rUp)
+
+  #       Support for legacy format lookup tables
+          if oppclassic:
+            for key in allkeys: # we can also save to allvals and write later
+              if key in scatkeys:
+                iii += 1
+                opncdf.variables[key][radind, rhi, li, :] = ret[key][:]
+              elif key in elekeys:
+                opncdf.variables[key][:, radind, rhi, li] = ret[key][:]
+              elif key in scalarkeys + extrakeys:
+                opncdf.variables[key][radind, rhi, li] = ret[key]
+              elif key in nlscalarkeys:
+                opncdf.variables[key][radind, rhi] = ret[key]
+              else:
+                print("key category missing: %s"%key)
+                sys.exit()
+          else:
+            for key in allkeys: # we can also save to allvals and write later
+              if key in scatkeys:
+                iii += 1
+                opncdf.variables[key][radind, li, rhi, :] = ret[key][:]
+              elif key in elekeys:
+                opncdf.variables[key][radind, li, rhi, :] = ret[key][:]
+              elif key in scalarkeys + extrakeys:
+                opncdf.variables[key][radind, li, rhi] = ret[key]
+              elif key in nlscalarkeys:
+                opncdf.variables[key][radind, rhi] = ret[key]
+              else:
+                print("key category missing: %s"%key)
+                sys.exit()
+          # end rh loop
+        # end lambda loop
+      # end radind loop
+
+
 
 """
 Run Mie directly at the desired values
 
 Calculates the Mueller matrix values from S12
 """
-
 def calculateScatVals(vals, scatkeys, ret, numsizes, s1arr, s2arr):
   ret[0,:,:] = 0.5 * ( np.abs(s1arr) ** 2 + np.abs(s2arr) ** 2 )  # s11
   ret[1,:,:] = -0.5 * ( -np.abs(s1arr) ** 2 + np.abs(s2arr) ** 2 ) # s12
@@ -1180,3 +1197,6 @@ def rawMie(mm, scatkeys, scalarkeys, lam, mr, mi, psd, costarr):
     ret[key] = thisvals
 
   return ret
+  
+  
+
