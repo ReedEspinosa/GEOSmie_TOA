@@ -84,11 +84,10 @@ def integrateShapes(data, fracs0):
       ret[key] = np.tensordot(fracs, thisdata, axes = (0, 0))
     elif len(thisdata.shape) == 6:
       ret[key] = np.tensordot(fracs, thisdata, axes = (0, 0))
-    elif len(thisdata.shape) == 1: # one-dimensional stuff, no shape averaging
+    elif len(thisdata.shape) == 1: # one-dimensional stuff, should correspond to dimensions of nc4
       ret[key] = thisdata
     else:
       print("unhandled number of dimensions %d in key %s"%(len(thisdata.shape), key))
-    
   return ret
 
 def getDR(arr):
@@ -521,6 +520,7 @@ def getHumidRefractiveIndex(params, radind, rhi, rh, nref0, nrefwater):
 
 
 def calculatePSD(params, radind, onerh, rh, xxarr, drarr, rrat, lam):
+  # WRE: I think this is supposed to return PSD in terms of dndr?
   pparam = params['psd']['params']
   psdtype = params['psd']['type']
   rparams = params['rhDep']
@@ -680,7 +680,7 @@ def fun(partID0, datatype, oppfx, oppclassic):
     
   # Refractive indices for particles and water
   mList = params['mList']
-  waterMList = pp.getWaterM()
+  waterMList = pp.getWaterM(params['waterPathRI'])
 
   # List of wavelengths in the particle refractive index table
   allLambda = mList[0][0]
@@ -1007,6 +1007,7 @@ def readSpheroid(fn):
 """
 For multimodal PSD both rawret as well as psd are lists, so in the integration phase
 we iterate over them
+WRE: I think PSD is in dndr? Seems to come out of calculatePSD()...
 """
 def integratePSD(xxarr, rawret, psd, fracs, lam, reff0, rhop0, rhop):
   ret = {}
@@ -1056,7 +1057,7 @@ def integratePSD(xxarr, rawret, psd, fracs, lam, reff0, rhop0, rhop):
     mass = volume * rhop
 
     thisarea = np.pi * rrarr ** 2.
-    thisweight = thisarea # scale by area
+    thisweight = thisarea # scale by area... WRE: How is this correct?
 
     reff = np.sum(rarr3) / np.sum(rarr2)
 
@@ -1096,22 +1097,25 @@ def integratePSD(xxarr, rawret, psd, fracs, lam, reff0, rhop0, rhop):
 #        print(thisp11)
 #        exit()
 
-      qscawe = ['g']
-
+      qscawe = ['g'] # TODO: Shouldn't this have more (e.g., lidar ratio?)
       if key in qscawe:
         thisweight *= rawret[fraci]['qsca'] # scale also by qext
 
       sumarea = np.sum(psd[fraci] * thisweight)
       totarea += frac * sumarea
-      
+
+      # WRE: This is also wrong, right?
+      #    Should be weighted by scattering of each bin, not just concentration of particles in that bin....
+      #    Also, it seems to be number concentration.... so it wouldn't even be close...
+      #   TODO : WE NEED TO DEBUG TO THIS POINT AND SEE WHAT PSD REALLY CONTAINS, AND IF NC4 OUTPUT MATCHS thisret['s11']...      
       if key in scatkeys:
         thisvals = rawret[fraci][key]
-        thisret[key] = np.dot(thisvals.T, psd[fraci]) # integrate
+        thisret[key] = np.dot(thisvals.T, psd[fraci]) # integrate 
       elif key in qbwght:
-        thisret[key] = p11back*thisret['qsca']/(4.*np.pi)
+        thisret[key] = p11back*thisret['qsca']/(4.*np.pi) # WRE: p11back originates before we calculate P11... but i guess qb is p1(180)?
 #        print(thisret[key])
 #        exit()
-      else:
+      else: # WRE: What are these variables? They seem to actually be scaled by qsca as expected...
         """
         For external mixing we first need to integrate over the individual PSD, 
         then sum the two cases 

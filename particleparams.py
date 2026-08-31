@@ -75,8 +75,8 @@ def getMSep(fn, sep):
   return data
 
 # Specialized function to read the HITRAN provided table of water refractive indices
-def getWaterM():
-  data = np.loadtxt('data/refrac.water.txt', skiprows=13, unpack=True, usecols=[0,1,2])
+def getWaterM(fn):
+  data = np.loadtxt(fn, skiprows=13, unpack=True, usecols=[0,1,2])
   data[0] *= 1e-6 # convert wavelength to meter units
   return data
 

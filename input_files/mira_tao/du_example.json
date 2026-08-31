@@ -9,16 +9,18 @@
 "rhDep": {"type": "trivial", "params":{
   "gf": [1.0]}},
 
+"waterPathRI": "input_files/refrac.water.txt",
+
 "psd": {"type": "du", "params":{
       "rMinMaj": [[0.1e-6, 0.18e-6, 0.3e-6, 0.6e-6], [1.0e-6], [1.8e-6], [3.0e-6], [6.0e-6]],
       "rMaxMaj": [[0.18e-6, 0.3e-6, 0.6e-6, 1.0e-6], [1.8e-6], [3.0e-6], [6.0e-6], [10.0e-6]],
       "fracs": [[0.009, 0.081, 0.234, 0.676], [1.0], [1.0], [1.0], [1.0]]}},
 
-"ri": {"format": "wsv", "path": ["data/mira_tao/ri-du_test.wsv"]},
+"ri": {"format": "wsv", "path": ["input_files/mira_tao/ri-du_example.wsv"]},
 
 "mode": "kernel",
 "kernel_params": {
   "path": "/Users/wrespino/Synced/STG_AerosolModelExchange/GRASP-LUT-Export/GRASP-Kernels_netCDF-Versions/kernel-grasp-v1.1.3-integrated_V4.nc", 
-  "shape_dist": "data/kernel_shape_dist/preintegrated.txt"
+  "shape_dist": "input_files/mira_tao/kernel_shape_dist/preintegrated.txt"
   }
 }
