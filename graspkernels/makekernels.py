@@ -33,10 +33,15 @@ Entry point: fun(ifn, dest), with ifn a JSON file in input_files/kernelgeneratio
   nice          nice increment for those processes
   keepWork      keep the per-refractive-index job and output files
   writeConversionJson  also write <name>_conversion.json for runkernelconversion.py
+  quadRefine    optional {"miMax": m, "xMin": x, "factor": f}: nodes with apex size parameter
+                > x, for imaginary indices <= m, use f times the points of the schedule
+                (more points where weak absorption leaves narrow resonances)
   reuseFrom     optional raw_kernels.npz of an earlier build with the same grid, refractive
-                indices, angles and quadrature. Its interior nodes are copied and only the
-                first and last node are computed (e.g. to change edgeNodes). Without this
-                key the whole kernel is computed, with the same result.
+                indices and angles. Its values are copied, and only part of the kernel is
+                computed, chosen by reuseRecompute: "edges" (first and last node, e.g. to
+                change edgeNodes; default) or "refine" (the quadRefine region, optionally
+                limited to apex size parameters within reuseXRange = [xlo, xhi]). Without
+                reuseFrom the whole kernel is computed, with the same result.
 
 Each refractive index is one spher_tri job; finished jobs are skipped on a rerun,
 so an interrupted build can be resumed.
@@ -90,11 +95,19 @@ def nodes(r, edge):
     return rlo, rhi, fac
 
 
-def nsub(x_hi, mi, cfg):
+def refined(m, xk, cfg):
+    """True if node with apex size parameter xk uses the quadRefine schedule for index m."""
+    qr = cfg.get('quadRefine')
+    return bool(qr) and m.imag <= qr['miMax'] and xk > qr['xMin']
+
+
+def nsub(x_hi, mi, cfg, refine=False):
     """Quadrature subintervals for a half hat ending at size parameter x_hi."""
     fac = 1.0
     if cfg['quadMiRef'] > 0 and mi > cfg['quadMiRef']:
         fac = max(cfg['quadMiMinFactor'], np.sqrt(cfg['quadMiRef'] / mi))
+    if refine:
+        fac *= cfg['quadRefine']['factor']
     for xmax, npts in cfg['quadPtsPerHalf']:
         if x_hi <= xmax:
             return max(1, int(np.ceil(fac * npts / cfg['quadNK'])))
@@ -108,8 +121,9 @@ def write_job(fn, cfg, angles, m, r, rlo, rhi):
         f.write(' '.join('%.6f' % a for a in angles) + '\n')
         f.write('1\n%.9f %.9e\n%d\n' % (m.real, m.imag, len(r)))
         for rk, lo, hi in zip(r, rlo, rhi):
-            nlo = 0 if lo >= rk else nsub(2*np.pi*rk/wl, m.imag, cfg)
-            nhi = 0 if hi <= rk else nsub(2*np.pi*hi/wl, m.imag, cfg)
+            ref = refined(m, 2*np.pi*rk/wl, cfg)
+            nlo = 0 if lo >= rk else nsub(2*np.pi*rk/wl, m.imag, cfg, ref)
+            nhi = 0 if hi <= rk else nsub(2*np.pi*hi/wl, m.imag, cfg, ref)
             f.write('%.10e %.10e %.10e %d %d\n' % (rk, lo, hi, nlo, nhi))
 
 
@@ -121,18 +135,19 @@ def read_out(fn, nr, nang):
     return v.reshape(nr, 2+6*nang)
 
 
-def run_jobs(cfg, work, angles, mlist, r, rlo, rhi):
+def run_jobs(cfg, work, angles, jobs, r, rlo, rhi):
+    """jobs: list of (n, m, ks) = output index, refractive index, node indices to compute."""
     os.makedirs(work, exist_ok=True)
     exe = os.path.join(work, 'spher_tri')  # private copy: rebuilding the repo cannot touch running jobs
     shutil.copy2(EXE, exe)
     todo = []
-    for n, m in enumerate(mlist):
+    for n, m, ks in sorted(jobs, key=lambda j: j[1].imag):   # most expensive (least absorbing) first
         job, out = os.path.join(work, 'job%04d.txt' % n), os.path.join(work, 'out%04d.bin' % n)
-        if os.path.exists(out) and os.path.getsize(out) == 12 + 8*len(r)*(2+6*len(angles)):
+        if os.path.exists(out) and os.path.getsize(out) == 12 + 8*len(ks)*(2+6*len(angles)):
             continue
-        write_job(job, cfg, angles, m, r, rlo, rhi)
+        write_job(job, cfg, angles, m, r[ks], rlo[ks], rhi[ks])
         todo.append((n, job, out))
-    print('%d of %d refractive indices to compute with %d process(es)' % (len(todo), len(mlist), cfg['nproc']))
+    print('%d of %d jobs to compute with %d process(es)' % (len(todo), len(jobs), cfg['nproc']), flush=True)
     t0 = time.time()
 
     def one(item):
@@ -164,35 +179,46 @@ def fun(ifn, dest):
         mr, mi = np.sort(np.array(cfg['mr'], float)), np.sort(np.array(cfg['mi'], float))
     mlist = [complex(a, b) for a in mr for b in mi]
     rlo, rhi, fac = nodes(r, cfg['edgeNodes'])
+    nr, nang = len(r), len(angles)
+    x = 2*np.pi*r/cfg['wavelength']
 
     outdir = os.path.join(dest, cfg['name'])
     work = os.path.join(outdir, 'work')
     os.makedirs(outdir, exist_ok=True)
     with open(os.path.join(outdir, 'generation_settings.json'), 'w') as fp:
         json.dump(cfg, fp, indent=4)
-    nr, nang = len(r), len(angles)
-    ks = np.arange(nr)
+
+    allk = np.arange(nr)
     if cfg.get('reuseFrom'):
         old = np.load(cfg['reuseFrom'])
         for key, val in (('r', r), ('angles', angles), ('mr', mr), ('mi', mi)):
             assert np.array_equal(old[key], val), 'reuseFrom: %s differs from this configuration' % key
-        ks = np.array([0, nr-1])
-        work = work + '_edges'
-        print('reusing interior nodes from %s; computing nodes %s' % (cfg['reuseFrom'], ks))
-    run_jobs(cfg, work, angles, mlist, r[ks], rlo[ks], rhi[ks])
-
-    raw = np.array([read_out(os.path.join(work, 'out%04d.bin' % n), len(ks), nang) for n in range(len(mlist))])
-    raw = raw.reshape(len(mr), len(mi), len(ks), -1) * fac[None, None, ks, None]
-    cols = lambda el: slice(2+ELEM_COLS[el]*nang, 2+(ELEM_COLS[el]+1)*nang)
-    if cfg.get('reuseFrom'):
+        what = cfg.get('reuseRecompute', 'edges')
+        if what == 'edges':
+            jobs = [(n, m, np.array([0, nr-1])) for n, m in enumerate(mlist)]
+        elif what == 'refine':
+            xlo, xhi = cfg.get('reuseXRange', [-np.inf, np.inf])
+            jobs = [(n, m, allk[[refined(m, xk, cfg) and xlo < xk <= xhi for xk in x]]) for n, m in enumerate(mlist)]
+            jobs = [j for j in jobs if len(j[2])]
+        else:
+            raise ValueError('reuseRecompute must be "edges" or "refine"')
+        work = work + '_' + what
+        print('reusing %s; recomputing %s (%d jobs)' % (cfg['reuseFrom'], what, len(jobs)), flush=True)
         ext, sca = old['ext'].copy(), old['sca'].copy()
         pm = {el: old['P'+el].copy() for el in cfg['elems']}
-        ext[..., ks], sca[..., ks] = raw[..., 0], raw[..., 1]
-        for el in cfg['elems']:
-            pm[el][..., ks, :] = ELEM_SIGN[el] * raw[..., cols(el)]
     else:
-        ext, sca = raw[..., 0], raw[..., 1]
-        pm = {el: ELEM_SIGN[el] * raw[..., cols(el)] for el in cfg['elems']}
+        jobs = [(n, m, allk) for n, m in enumerate(mlist)]
+        ext, sca = np.zeros((len(mr), len(mi), nr)), np.zeros((len(mr), len(mi), nr))
+        pm = {el: np.zeros((len(mr), len(mi), nr, nang)) for el in cfg['elems']}
+    run_jobs(cfg, work, angles, jobs, r, rlo, rhi)
+
+    for n, m, ks in jobs:
+        i, j = divmod(n, len(mi))
+        v = read_out(os.path.join(work, 'out%04d.bin' % n), len(ks), nang) * fac[ks, None]
+        ext[i, j, ks], sca[i, j, ks] = v[:, 0], v[:, 1]
+        for el in cfg['elems']:
+            c = ELEM_COLS[el]
+            pm[el][i, j, ks, :] = ELEM_SIGN[el] * v[:, 2+c*nang:2+(c+1)*nang]
     np.savez_compressed(os.path.join(outdir, 'raw_kernels.npz'), r=r, angles=angles, mr=mr, mi=mi,
                         ext=ext, sca=sca, **{'P'+el: P for el, P in pm.items()})
 

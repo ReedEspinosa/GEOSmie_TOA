@@ -12,6 +12,7 @@
     "quadPtsPerHalf": [[600, 400], [1500, 250], [1e9, 150]],
     "quadMiRef": 1e-4,
     "quadMiMinFactor": 0.5,
+    "quadRefine": {"miMax": 2e-3, "xMin": 0, "factor": 8},
     "ddelt": 1e-10,
     "mode": 7,
     "nproc": 4,

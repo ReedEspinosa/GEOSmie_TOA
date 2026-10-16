@@ -63,7 +63,8 @@ Conventions, all checked against the GRASP v1.1.3 kernels:
 
 Accuracy is limited by Mie resonances, whose width grows with absorption and roughly in
 proportion to x. The points needed are therefore roughly a fixed number per half hat
-(`quadPtsPerHalf`), fewer for more absorbing particles (`quadMiRef`, `quadMiMinFactor`).
+(`quadPtsPerHalf`), fewer for more absorbing particles (`quadMiRef`, `quadMiMinFactor`),
+and more where needed (`quadRefine`).
 Convergence tests (half width 0.0463 in ln r, relative to much denser references):
 
 - m_i ≥ 1e-3: 100 points per half converge ext, sca and P11 to ≤ 1e-6 for x ≤ 200.
@@ -107,18 +108,23 @@ the expansion), so the largest nodes dominate the run time.
   to a median of 4e-7 in ext and qext, and to ≤ 4e-4 in g for x ≥ 1.
 
 - Production kernel on the TAMUdust2020 hexahedra grid (`grasp_sphere_tamu273.json`; 273
-  nodes, 8 × 31 refractive indices, `edgeNodes = "full"`; ~5 h on 4 cores at nice 10).
-  All values finite and positive. P22 = P11 and P44 = P33 to 2e-5. ½∫K11 sin θ dθ = K_sca
-  to 6e-6 for x < 10. The x grid and refractive indices are identical to the hexahedra
-  kernels. `convergence_spotcheck.py` with 2× the quadrature points:
-  - m_i ≥ 3e-3: ext and sca change ≤ 1e-12, P11 ≤ 1e-8 for x < 1000 and ≤ 8e-6 above.
-  - m_i = 1e-4 (m_r = 1.37 and 1.67), the hardest case. Ext changes ≤ 3e-5 and sca
-    ≤ 1e-4 everywhere. P11 (median / 95th percentile / sin-weighted max):
-    - x ≤ 30: ~0 / 1.5e-5 / 3e-5
-    - 30–300: 4e-5 / 3e-4 / 6e-5
-    - 300–1000: 1e-4 / 1e-3 / 3e-4
-    - x > 1000: 5e-4 / 1.5e-2 / 4e-3. The largest changes, up to 27%, are confined to
-      143–180° (and a few points at 106–120°), where P11 is ~1e-8 of its forward peak.
+  nodes, 8 × 31 refractive indices, `edgeNodes = "full"`). All values are finite and
+  positive. P22 = P11 and P44 = P33 to 2e-5. ½∫K11 sin θ dθ = K_sca to 6e-6 for x < 10. The
+  x grid and refractive indices are identical to the hexahedra kernels.
+  - How it was built: the base schedule on 4 cores (~5 h), then `quadRefine` (8× the points
+    for m_i ≤ 2e-3, all nodes) recomputed via `reuseFrom` on 8 cores (~8.5 h). A from-scratch
+    run of the JSON gives the same values.
+  - Convergence, from `convergence_spotcheck.py` with 2× the final points (i.e. 16× the base
+    schedule in the refined region; every 6th node above x = 30 plus the last, and all
+    nodes x ≤ 30). Changes:
+    - m_i = 1e-4 (m_r = 1.37, 1.67): ext and sca ≤ 5e-8 everywhere. P11 ≤ 6e-8 for x ≤ 1000;
+      for x > 1000 its 95th percentile is ≤ 1.6e-6 and its maximum 2.8e-5.
+    - m_i = 4e-4 and 2e-3: ext and sca ≤ 3e-12; P11 ≤ 2e-11 for x ≤ 1000 and ≤ 1.7e-7 above.
+    - m_i ≥ 3e-3 (not refined, 2× check of the base schedule): ext and sca ≤ 1e-12; P11
+      ≤ 1e-8 for x < 1000 and ≤ 8e-6 above.
+  - What the refinement corrected (base vs final, m_i ≤ 2e-3): ext and sca ≤ 1.4e-3 and P11
+    sin-weighted ≤ 1.1% at x > 1000; at 300 < x ≤ 1000, P11 95th percentile ≤ 1.2e-3; below
+    x = 300, P11 ≤ 2.5e-3 at single angles.
 - Against the old interpolated sphere kernel shipped with the hexahedra (2024 folder):
   old/new = 1.0604 in absorption and 1.0605 in extinction at x < 0.1 (the dlnr error).
   Old P11 is ~12% high at small x, i.e. 1.0604 × 1.057, the bias of the coarse (0.27 in

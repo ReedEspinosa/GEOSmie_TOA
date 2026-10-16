@@ -4,7 +4,9 @@ Reruns selected refractive indices with the quadrature schedule multiplied by FA
 compares with the build's raw_kernels.npz.
 
   python graspkernels/tests/convergence_spotcheck.py <generation json> <build dir> <scratch dir> \
-         [FACTOR] [m indices, e.g. 0,15,30]
+         [FACTOR] [m indices, e.g. 0,15,30] [node stride]
+
+With a node stride N, only every N-th node above x = 30 and the last node are recomputed.
 
 m indices count over (mr, mi) in file order (mi inner). Reported per x range: ext and sca
 |rel. diff| (median/max), P11 |rel. diff| (median / 95th percentile / max over angles
@@ -29,20 +31,25 @@ mlist = [complex(a, b) for a in mr for b in mi]
 sel = [int(v) for v in sys.argv[5].split(',')] if len(sys.argv) > 5 else [0, len(mi)//2, len(mi)-1]
 cfg['quadPtsPerHalf'] = [[x, p*factor] for x, p in cfg['quadPtsPerHalf']]
 rlo, rhi, fac = mk.nodes(r, cfg['edgeNodes'])
+xall = 2*np.pi*r/cfg['wavelength']
+ks = np.arange(len(r))
+if len(sys.argv) > 6:
+    stride = int(sys.argv[6])
+    ks = np.union1d(np.nonzero(xall > 30)[0][::stride], [len(r)-1])
 os.makedirs(tmp, exist_ok=True)
 nang = len(ang)
-x = 2*np.pi*r/cfg['wavelength']
+x = xall[ks]
 ranges = [(0, 30), (30, 300), (300, 1000), (1000, 1e9)]
 sw = np.sin(np.radians(ang))
 for n in sel:
     m = mlist[n]
     job, out = os.path.join(tmp, 'sc%04d.txt' % n), os.path.join(tmp, 'sc%04d.bin' % n)
-    mk.write_job(job, cfg, ang, m, r, rlo, rhi)
+    mk.write_job(job, cfg, ang, m, r[ks], rlo[ks], rhi[ks])
     subprocess.run(['nice', '-n', str(cfg['nice']), mk.EXE, job, out], check=True, stderr=subprocess.DEVNULL)
-    v = mk.read_out(out, len(r), nang) * fac[:, None]
+    v = mk.read_out(out, len(ks), nang) * fac[ks, None]
     i, j = divmod(n, len(mi))
-    old_ext, old_sca, old11 = d['ext'][i, j], d['sca'][i, j], d['P11'][i, j]
-    print('m = %.6f + %.4e i (index %d), quadrature x%g' % (m.real, m.imag, n, factor))
+    old_ext, old_sca, old11 = d['ext'][i, j, ks], d['sca'][i, j, ks], d['P11'][i, j, ks]
+    print('m = %.6f + %.4e i (index %d), quadrature x%g, %d nodes' % (m.real, m.imag, n, factor, len(ks)))
     for lo, hi in ranges:
         k = (x > lo) & (x <= hi)
         if not k.any():
