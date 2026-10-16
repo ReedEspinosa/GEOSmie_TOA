@@ -55,9 +55,42 @@
         "spheroid",
         "spheroid"
     ],
-    "shapeDescription": "spheroid",
+    "shapeDescription": [
+        "spheroid, axis ratio 0.3349 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 0.3669 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 0.4019 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 0.4403 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 0.4823 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 0.5283 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 0.5787 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 0.6339 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 0.6944 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 0.7607 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 0.8333 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 0.9129 (rotational/equatorial semi-axis)",
+        "homogeneous sphere: Lorenz-Mie (Mishchenko spher.f) hat-function averages on the GRASP v1.1.3 41-node grid with full end nodes (GEOSmie_TOA graspkernels); replaces the KERNELS_BASE sphere kernel (its 13 deg column was interpolated, it held 23 fill values of 1000.0, and its end nodes used half hats with full weight)",
+        "spheroid, axis ratio 1.0954 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 1.2 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 1.3145 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 1.44 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 1.5774 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 1.728 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 1.8929 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 2.0736 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 2.2715 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 2.48832 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 2.7258 (rotational/equatorial semi-axis)",
+        "spheroid, axis ratio 2.986 (rotational/equatorial semi-axis)"
+    ],
     "globalAttrs": {
-        "history": "V5 (2026-10): metadata-only update of the V4 file (variable descriptions, units of qb and scama, global attributes, new sphericity and shape_description variables, lidar_ratio filled, ratio set to the exact values in the kernel headers). All other values are identical to V4.",
+        "history": "V5 (2026-10): metadata update of the V4 file (variable descriptions, units of qb and scama, global attributes, new sphericity and shape_description variables, lidar_ratio filled, ratio set to the exact values in the kernel headers), and the sphere entry (ratio 1) replaced by a direct Lorenz-Mie rebuild on the same grid with full end nodes (exact values; it reproduces the GRASP v1.1.3 sphere kernel to ~1e-6 at interior nodes). All non-spherical entries are identical to V4.",
         "source_kernels": "/Users/wrespino/Synced/STG_AerosolModelExchange/spheroid-package-master/KERNELS_n22k16_181_base"
-    }
+    },
+    "replaceRatios": [
+        {
+            "index": 12,
+            "source": "/Users/wrespino/Synced/STG_AerosolModelExchange/Mian/kernel_rebuild/kernel-grasp-sphere-base41-fullEdges.nc",
+            "sourceIndex": 0
+        }
+    ]
 }

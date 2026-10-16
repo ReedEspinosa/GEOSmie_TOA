@@ -1,0 +1,34 @@
+{
+    "name": "grasp-sphere-base41-fullEdges",
+    "path": "/Users/wrespino/Synced/STG_AerosolModelExchange/Mian/kernel_rebuild/grasp-sphere-base41-fullEdges",
+    "fnpre": "kernels",
+    "ratios": [
+        "100"
+    ],
+    "contlen": 14,
+    "mrlen": 22,
+    "milen": 16,
+    "scathdrlen": 25,
+    "scatcontlen": 781,
+    "elems": [
+        "11",
+        "22",
+        "33",
+        "44",
+        "12",
+        "34"
+    ],
+    "scatelemlen": 19,
+    "renormUpperX": 0.3,
+    "angFwdPeak": 2,
+    "kernelScaleFact": 1,
+    "sphericity": [
+        1.0
+    ],
+    "shapeDescription": [
+        "homogeneous sphere"
+    ],
+    "globalAttrs": {
+        "history": "Intermediate: source of the sphere entry of the V5 GRASP v1.1.3 integrated and DLS single-aspect-ratio files."
+    }
+}

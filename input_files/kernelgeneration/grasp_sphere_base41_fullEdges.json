@@ -1,0 +1,36 @@
+{
+    "name": "grasp-sphere-base41-fullEdges",
+    "fnpre": "kernels",
+    "ratioName": "100",
+    "ratioValue": 1.0,
+    "wavelength": 0.34,
+    "gridFile": "/Users/wrespino/Synced/Local_Code_MacBook/grasp_open/src/retrieval/internal_files/KERNELS_BASE/grid1.dat",
+    "riFromKernel": "/Users/wrespino/Synced/Local_Code_MacBook/grasp_open/src/retrieval/internal_files/KERNELS_BASE/kernels_100_00.txt",
+    "elems": [
+        "11",
+        "12",
+        "22",
+        "33",
+        "34",
+        "44"
+    ],
+    "edgeNodes": "full",
+    "quadNK": 10,
+    "quadPtsPerHalf": [
+        [
+            1000000000.0,
+            2400
+        ]
+    ],
+    "quadMiRef": 0.0001,
+    "quadMiMinFactor": 0.5,
+    "ddelt": 1e-10,
+    "mode": 7,
+    "nproc": 7,
+    "nice": 10,
+    "keepWork": false,
+    "writeConversionJson": true,
+    "digits": 8,
+    "reuseFrom": "/Users/wrespino/Synced/STG_AerosolModelExchange/Mian/kernel_rebuild/grasp-sphere-base41-rebuild/raw_kernels.npz",
+    "reuseRecompute": "edges"
+}
