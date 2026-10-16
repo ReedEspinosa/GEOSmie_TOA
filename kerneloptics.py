@@ -101,8 +101,10 @@ def calculateEfficiencies(kernelFile, lam, ratioInd, r, psd, mr, mi,
   nFine      - points of the fine ln(r) quadrature grid
 
   Returns dict with 'qext', 'qsca', 'qabs' (dimensionless; total cross
-  section per total projected area) and 'area' (projected area per particle
-  in PSD units, i.e. sum(pi r^2 dN) / sum(dN)).
+  section per total geometric cross section of the volume-equivalent
+  spheres, sum(pi r_v^2 dN), the Mishchenko/Dubovik/GRASP convention; for
+  non-spherical shapes the true-area efficiency is q*sphericity) and 'area'
+  (pi r_v^2 per particle in PSD units, i.e. sum(pi r^2 dN) / sum(dN)).
   """
   r = np.asarray(r, float)
   psd = np.asarray(psd, float)

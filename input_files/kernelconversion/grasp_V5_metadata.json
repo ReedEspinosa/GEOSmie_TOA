@@ -1,0 +1,20 @@
+{
+    "src": "/Users/wrespino/Synced/STG_AerosolModelExchange/GRASP-LUT-Export/GRASP-Kernels_netCDF-Versions/kernel-grasp-v1.1.3-integrated_V4.nc",
+    "dest": "/Users/wrespino/Synced/STG_AerosolModelExchange/GRASP-LUT-Export/GRASP-Kernels_netCDF-Versions/kernel-grasp-v1.1.3-integrated_V5.nc",
+    "ratioValues": [
+        1.0,
+        2.986
+    ],
+    "sphericity": [
+        1.0,
+        "mixture:/Users/wrespino/Synced/Local_Code_MacBook/GEOSmie_TOA/input_files/gocart/kernel_shape_dist/spheroid_fixed.txt"
+    ],
+    "shapeDescription": [
+        "homogeneous sphere (GRASP v1.1.3 KERNELS_BASE kernels_100)",
+        "GRASP v1.1.3 spheroid mixture (Dubovik et al. 2006, fixed axis-ratio distribution; KERNELS_BASE kernels_299, ratio label 2.986)"
+    ],
+    "globalAttrs": {
+        "history": "V5 (2026-10): metadata-only update of the V4 file (variable descriptions, units of qb and scama, global attributes, new sphericity and shape_description variables, lidar_ratio filled, ratio set to the exact values in the kernel headers). All other values are identical to V4.",
+        "source_kernels": "/Users/wrespino/Synced/Local_Code_MacBook/grasp_open/src/retrieval/internal_files/KERNELS_BASE"
+    }
+}

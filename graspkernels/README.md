@@ -27,6 +27,17 @@ The JSON keys are documented at the top of `makekernels.py`. Each refractive ind
 job, and finished jobs are skipped on a rerun, so an interrupted build resumes where it
 stopped.
 
+## Rescaling kernels (`scalekernels.py`)
+
+`scalekernels.fun(ifn, dest)` (run with `python runkernelscaling.py --filename <config>.json --dest <dir>`) multiplies EXTINCTION, ABSORPTION and every scattering-matrix element of a kernel set by one factor. It rewrites the files with `graspkerneltext.write_kernels`, keeps the ratio label, grid and angles, and writes a provenance file `<fnpre>_<ratio>_scaling.json` (source checksums, factor, commit). `graspkerneltext.read_kernels` reads any of the layouts in use, KERNELS_BASE or one row per radius.
+
+Its first use (October 2026) corrects the TAMUdust2020 hexahedra kernels. They had been built as Q_A·π·r_v²/V instead of C/V = Q_A·A/V and were low by the sphericity:
+- configs `input_files/kernelgeneration/scale_TAMUdust2020_hex_V5.json` and `scale_TAMUdust2020_hex_varAngRes_V5.json`;
+- α = A/(π·r_v²) = 1.42726 (Ψ = 0.70064, the ensemble TAMUdust2020 delivers at nominal S = 0.7);
+- written with 8 significant digits like the source files (`digits`), so that ext − abs keeps its precision.
+
+The sphere kernel was rewritten with 8 digits from its `raw_kernels.npz` (`grasp_sphere_tamu273_8digits.json`, `reuseRecompute = "none"`).
+
 ## What is computed
 
 For node k with hat function T_k(u), u = ln r (0 at the neighbouring nodes, 1 at r_k):

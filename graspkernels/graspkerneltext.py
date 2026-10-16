@@ -35,9 +35,9 @@ def fe(v, w=16, d=7):
     return out.rjust(w)
 
 
-def _lines(vals, per=PER_LINE):
+def _lines(vals, per=PER_LINE, d=7):
     vals = list(vals)
-    return [''.join(fe(v) for v in vals[i:i+per]) for i in range(0, len(vals), per)]
+    return [''.join(fe(v, 16, d) for v in vals[i:i+per]) for i in range(0, len(vals), per)]
 
 
 def _ri_header(mr, mi):
@@ -62,13 +62,19 @@ def write_grid(path, r, wavelength, angles):
 
 
 def write_kernels(path, fnpre, ratio_name, ratio_value, wavelength, r, mr, mi, ext, absb,
-                  angles=None, pmat=None):
+                  angles=None, pmat=None, digits=7):
     """Write <fnpre>_<ratio_name>_00.txt and, if pmat is given, one file per element.
+
+    digits: significant digits of the kernel values (7 as in KERNELS_BASE; up to 8 fits the
+    16-character field). Scattering is ext - abs in GRASP, so where the single-scattering albedo
+    is small its precision is limited by this.
 
     r: radius nodes [um]; mr, mi: refractive-index nodes (mi >= 0);
     ext, absb: arrays (len(mr), len(mi), len(r)); pmat: dict elem -> array
     (len(mr), len(mi), len(r), len(angles)), elem in '11','12','22','33','34','44'.
     """
+    if not 1 <= digits <= 8:
+        raise ValueError('digits must be 1-8 to fit the 16-character field')
     os.makedirs(path, exist_ok=True)
     head = ['%s%s%16.5f  rmin, rmax, ratio' % (fe(min(r), 16, 6), fe(max(r), 16, 6), ratio_value),
             '%12d   number of grid radii' % -len(r)]
@@ -77,8 +83,8 @@ def write_kernels(path, fnpre, ratio_name, ratio_value, wavelength, r, mr, mi, e
     out = head + _ri_header(mr, mi)
     for i in range(len(mr)):
         for j in range(len(mi)):
-            out += blk('0', i, j) + ['  EXTINCTION (1/um):'] + _lines(ext[i, j]) \
-                   + ['  ABSORPTION (1/um):'] + _lines(absb[i, j])
+            out += blk('0', i, j) + ['  EXTINCTION (1/um):'] + _lines(ext[i, j], d=digits) \
+                   + ['  ABSORPTION (1/um):'] + _lines(absb[i, j], d=digits)
     _write(os.path.join(path, '%s_%s_00.txt' % (fnpre, ratio_name)), out + _footer(ratio_value))
     if pmat is None:
         return
@@ -89,7 +95,7 @@ def write_kernels(path, fnpre, ratio_name, ratio_value, wavelength, r, mr, mi, e
             for j in range(len(mi)):
                 out += blk(el, i, j)
                 for k in range(len(r)):
-                    out += _lines(P[i, j, k])
+                    out += _lines(P[i, j, k], d=digits)
         _write(os.path.join(path, '%s_%s_%s.txt' % (fnpre, ratio_name, el)), out + _footer(ratio_value))
 
 
@@ -133,3 +139,69 @@ def read_ri_nodes(fn):
                 mi.append(abs(float(t[2])))
     nmi = len(set(mi))
     return np.array(mr[::nmi]), np.array(mi[:nmi])
+
+
+def read_kernels(path, fnpre, ratio_name, elems=('11', '12', '22', '33', '34', '44')):
+    """Read a complete GRASP text-kernel set for one ratio, in any of the layouts in use
+    (KERNELS_BASE, 10 values per line; or one row per radius as in the TAMUdust2020 kernels).
+
+    Returns a dict with ratio_value, wavelength, mr, mi (>= 0), ext and abs (len(mr), len(mi), nr),
+    angles, and pmat (dict elem -> array (len(mr), len(mi), nr, len(angles))). Values are as stored
+    (i.e. multiplied by the node weight dlnr).
+    """
+    out = {}
+    fn = os.path.join(path, '%s_%s_00.txt' % (fnpre, ratio_name))
+    with open(fn) as f:
+        lines = f.read().split('\n')
+    out['ratio_value'] = float(lines[0].split()[2])
+    nr = abs(int(lines[1].split()[0]))
+    wl, mr, mi, ext, absb = [], [], [], [], []
+    cur = None
+    for ln in lines[2:]:
+        if 'wavel, rreal, rimag' in ln:
+            t = ln.split()
+            wl.append(float(t[0])); mr.append(float(t[1])); mi.append(abs(float(t[2])))
+        elif 'EXTINCTION' in ln:
+            cur = []; ext.append(cur)
+        elif 'ABSORPTION' in ln:
+            cur = []; absb.append(cur)
+        elif 'element, ratio' in ln or 'Shape distribution' in ln:
+            cur = None
+        elif cur is not None:
+            cur.append(ln)
+    nmi = len(set(mi))
+    nmr = len(mr) // nmi
+    out['wavelength'] = wl[0]
+    out['mr'] = np.array(mr[::nmi])
+    out['mi'] = np.array(mi[:nmi])
+    for key, blocks in (('ext', ext), ('abs', absb)):
+        arr = np.array(' '.join(' '.join(b) for b in blocks).split(), float)
+        if arr.size != nmr * nmi * nr:
+            raise ValueError('%s: expected %d %s values, found %d' % (fn, nmr*nmi*nr, key, arr.size))
+        out[key] = arr.reshape(nmr, nmi, nr)
+    out['angles'], out['pmat'] = None, {}
+    for el in elems:
+        fn = os.path.join(path, '%s_%s_%s.txt' % (fnpre, ratio_name, el))
+        with open(fn) as f:
+            lines = f.read().split('\n')
+        i = next(k for k, ln in enumerate(lines) if 'number of scattering angles' in ln)
+        nang = int(lines[i].split()[0])
+        j = next(k for k, ln in enumerate(lines) if 'range of real refr. index' in ln)
+        angles = np.array(' '.join(lines[i+1:j]).split()[:nang], float)
+        if out['angles'] is None:
+            out['angles'] = angles
+        elif not np.array_equal(angles, out['angles']):
+            raise ValueError('%s: scattering angles differ from the other elements' % fn)
+        data, take = [], False
+        for ln in lines[j:]:
+            if 'wavel, rreal, rimag' in ln:
+                take = True
+            elif 'element, ratio' in ln or 'Shape distribution' in ln:
+                take = False
+            elif take:
+                data.append(ln)
+        arr = np.array(' '.join(data).split(), float)
+        if arr.size != nmr * nmi * nr * nang:
+            raise ValueError('%s: expected %d values, found %d' % (fn, nmr*nmi*nr*nang, arr.size))
+        out['pmat'][el] = arr.reshape(nmr, nmi, nr, nang)
+    return out

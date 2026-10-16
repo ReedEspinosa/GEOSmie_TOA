@@ -4,7 +4,10 @@ import netCDF4 as nc
 import json
 import glob
 import re
+import subprocess
+import datetime
 from scipy import integrate
+import kernelmeta
 
 def fun(ifn, dest):
   with open(ifn) as fp:
@@ -24,11 +27,20 @@ def fun(ifn, dest):
   xMaxRenorm = data['renormUpperX'] # largest size parameter for which PM elements are renormalized (0 for no renomralization)
   angFwdPeak = data['angFwdPeak'] # angle [degrees] of forward peak in asymmetry parameter calculation truncation correction; 0 -> no correction (e.g., with high angular res. Saito DB) 
   kernelScaleFact = data['kernelScaleFact'] # unity for GRASP v1.1.3 kernels; kernel values multiplied by kernelScaleFact should give units of 1/μm 
+  # Optional keys (V5 metadata; see kernelmeta.py):
+  ratioValues = data.get('ratioValues', None) # values of the 'ratio' variable; default: the ratio in the header of each <fnpre>_<ratio>_00 file
+  sphericity = data.get('sphericity', None) # list, one sphericity per entry in ratios; written to the file and, unless checkLargeX is false, used to check that qext -> 2/sphericity at the largest x
+  shapeDescription = data.get('shapeDescription', None) # list, one description string per entry in ratios
+  globalAttrs = data.get('globalAttrs', {}) # extra global attributes (e.g. history)
+  checkLargeX = data.get('checkLargeX', True)
 
   pfx = path
   sizes, x, lamb = getSizes(pfx)
 
-  ratnums = [float(r)/100 for r in ratios]
+  if ratioValues is None: # exact ratio from the kernel header (e.g. 0.3349 or 2.986), not the rounded file name label
+    ratnums = [float(open(os.path.join(pfx, '%s_%s_00.txt'%(fnpre, r))).readline().split()[2]) for r in ratios]
+  else:
+    ratnums = [float(r) for r in ratioValues]
 
   allext = []
   allabsorb = []
@@ -47,7 +59,7 @@ def fun(ifn, dest):
     scadata = []
     for ei, ele in enumerate(elems):
       thisscadata = readScatEle(pfx, ratio, ele, fnpre, scathdrlen, scatcontlen, scatelemlen)
-      scadata.append(thisscadata)
+      scadata.append(np.array(thisscadata)) # (refractive index, x, angle); numpy keeps memory use down
     
     allext.append(exti)
     allabsorb.append(absorb)
@@ -116,6 +128,17 @@ def fun(ifn, dest):
   # Calculate backscattering efficiencies 
   p11back = scama[:,:,:,:,0,-1]
   qBck = p11back * qsca # get backscattering efficiency by multiplying p11 by qsca
+
+  # lidar ratio (extinction-to-backscatter ratio, sr)
+  lidar = 4*np.pi*qext/np.where(qBck > 0, qBck, np.nan)
+
+  # check the large-x limit of qext against 2/sphericity (catches kernels left in the true-area convention)
+  if sphericity is not None and checkLargeX:
+    imin = np.argmin(np.abs(np.array(mi, dtype=float))) # lowest absorption
+    for rati in range(len(ratios)):
+      qLrgX = qext[rati,:,imin,-1]
+      assert np.all(np.abs(qLrgX*sphericity[rati]/2 - 1) < 0.05), \
+        'ratio %s: qext at the largest x (%5.3f-%5.3f) is not within 5%% of 2/sphericity = %5.3f' % (ratios[rati], qLrgX.min(), qLrgX.max(), 2/sphericity[rati])
 
   # calculate cross-sections by multiplying efficiencies by geom cross-section of equivalent spheres
   areaconv = np.pi * np.array(sizes) ** 2
@@ -192,7 +215,28 @@ def fun(ifn, dest):
     ncdf.variables['cext'][:,:,:,:] = cext
     ncdf.variables['cabs'][:,:,:,:] = cext - csca
     ncdf.variables['qb'][:,:,:,:] = qBck
+    ncdf.variables['lidar_ratio'][:,:,:,:] = lidar
     ncdf.variables['g'][:,:,:,:] = g
+
+    # V5 metadata: definitions of all variables, sphericity, shape descriptions and global attributes
+    gattrs = {'source_kernels': os.path.abspath(pfx), 'source_kernel_ratios': ', '.join(ratios),
+              'renormUpperX': xMaxRenorm, 'angFwdPeak': angFwdPeak, 'kernelScaleFact': kernelScaleFact,
+              'conversion_settings': json.dumps(data), 'geosmie_commit': gitCommit(),
+              'created': datetime.datetime.now().isoformat(timespec='seconds')}
+    gattrs.update(globalAttrs)
+    sph = sphericity if sphericity is not None else [np.nan]*len(ratios)
+    desc = shapeDescription if shapeDescription is not None else ['']*len(ratios)
+    kernelmeta.apply(ncdf, lamb, ratnums, sph, desc, gattrs)
+
+
+def gitCommit():
+  here = os.path.dirname(os.path.abspath(__file__))
+  try:
+    rev = subprocess.run(['git', '-C', here, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+    dirty = subprocess.run(['git', '-C', here, 'status', '--porcelain', '--untracked-files=no'], capture_output=True, text=True).stdout.strip()
+    return rev + ('-dirty' if dirty else '')
+  except OSError:
+    return 'unknown'
 
 
 def getSizes(pfx):

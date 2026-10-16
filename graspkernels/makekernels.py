@@ -39,9 +39,11 @@ Entry point: fun(ifn, dest), with ifn a JSON file in input_files/kernelgeneratio
   reuseFrom     optional raw_kernels.npz of an earlier build with the same grid, refractive
                 indices and angles. Its values are copied, and only part of the kernel is
                 computed, chosen by reuseRecompute: "edges" (first and last node, e.g. to
-                change edgeNodes; default) or "refine" (the quadRefine region, optionally
-                limited to apex size parameters within reuseXRange = [xlo, xhi]). Without
+                change edgeNodes; default), "refine" (the quadRefine region, optionally
+                limited to apex size parameters within reuseXRange = [xlo, xhi]) or "none"
+                (nothing; only rewrite the text files, e.g. with other digits). Without
                 reuseFrom the whole kernel is computed, with the same result.
+  digits        significant digits of the text kernel values (default 7, as KERNELS_BASE; max 8)
 
 Each refractive index is one spher_tri job; finished jobs are skipped on a rerun,
 so an interrupted build can be resumed.
@@ -67,7 +69,7 @@ DEFAULTS = {'fnpre': 'kernels', 'ratioName': '100', 'ratioValue': 1.0,
             'elems': ['11', '12', '22', '33', '34', '44'], 'edgeNodes': 'grasp',
             'quadNK': 10, 'quadPtsPerHalf': [[1e9, 400]], 'quadMiRef': 0.0, 'quadMiMinFactor': 1.0,
             'ddelt': 1e-10, 'mode': 7,
-            'nproc': 1, 'nice': 0, 'keepWork': False, 'writeConversionJson': True}
+            'nproc': 1, 'nice': 0, 'keepWork': False, 'writeConversionJson': True, 'digits': 7}
 
 
 def load(ifn):
@@ -200,8 +202,10 @@ def fun(ifn, dest):
             xlo, xhi = cfg.get('reuseXRange', [-np.inf, np.inf])
             jobs = [(n, m, allk[[refined(m, xk, cfg) and xlo < xk <= xhi for xk in x]]) for n, m in enumerate(mlist)]
             jobs = [j for j in jobs if len(j[2])]
+        elif what == 'none':
+            jobs = []
         else:
-            raise ValueError('reuseRecompute must be "edges" or "refine"')
+            raise ValueError('reuseRecompute must be "edges", "refine" or "none"')
         work = work + '_' + what
         print('reusing %s; recomputing %s (%d jobs)' % (cfg['reuseFrom'], what, len(jobs)), flush=True)
         ext, sca = old['ext'].copy(), old['sca'].copy()
@@ -210,7 +214,8 @@ def fun(ifn, dest):
         jobs = [(n, m, allk) for n, m in enumerate(mlist)]
         ext, sca = np.zeros((len(mr), len(mi), nr)), np.zeros((len(mr), len(mi), nr))
         pm = {el: np.zeros((len(mr), len(mi), nr, nang)) for el in cfg['elems']}
-    run_jobs(cfg, work, angles, jobs, r, rlo, rhi)
+    if jobs:
+        run_jobs(cfg, work, angles, jobs, r, rlo, rhi)
 
     for n, m, ks in jobs:
         i, j = divmod(n, len(mi))
@@ -225,11 +230,11 @@ def fun(ifn, dest):
     print('writing GRASP text kernels to %s' % outdir)
     shutil.copyfile(cfg['gridFile'], os.path.join(outdir, 'grid1.dat'))
     gkt.write_kernels(outdir, cfg['fnpre'], cfg['ratioName'], cfg['ratioValue'], cfg['wavelength'],
-                      r, mr, mi, ext, ext - sca, angles, pm)
+                      r, mr, mi, ext, ext - sca, angles, pm, digits=cfg['digits'])
     if cfg['writeConversionJson']:
         cj = gkt.conversion_json(cfg['name'], os.path.abspath(outdir), cfg['fnpre'], cfg['ratioName'],
                                  nr, len(mr), len(mi), nang, cfg['elems'])
         with open(os.path.join(outdir, cfg['name'] + '_conversion.json'), 'w') as fp:
             json.dump(cj, fp, indent=4)
-    if not cfg['keepWork']:
+    if not cfg['keepWork'] and os.path.isdir(work):
         shutil.rmtree(work)
