@@ -1,0 +1,21 @@
+{
+    "name": "grasp-sphere-TAMUdust2020-grid273",
+    "fnpre": "kernels",
+    "ratioName": "100",
+    "ratioValue": 1.0,
+    "wavelength": 0.34,
+    "gridFile": "/Users/wrespino/Synced/NIP_Morphology_Polarimetry/TAMUdust2020_kernels/TAMUdust2020-in-GRASP-kernel-format_2024/grid1.dat",
+    "riFromKernel": "/Users/wrespino/Synced/NIP_Morphology_Polarimetry/TAMUdust2020_kernels/TAMUdust2020-in-GRASP-kernel-format_2024/kernels_299_00.txt",
+    "elems": ["11", "12", "22", "33", "34", "44"],
+    "edgeNodes": "full",
+    "quadNK": 10,
+    "quadPtsPerHalf": [[600, 400], [1500, 250], [1e9, 150]],
+    "quadMiRef": 1e-4,
+    "quadMiMinFactor": 0.5,
+    "ddelt": 1e-10,
+    "mode": 7,
+    "nproc": 4,
+    "nice": 10,
+    "keepWork": false,
+    "writeConversionJson": true
+}

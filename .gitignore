@@ -4,3 +4,5 @@ Kemppinen1447.pdf
 pymiecoated/build/*
 pymiecoated/*.egg*
 pymiecoated/dist/*.egg*
+graspkernels/spher_tri
+graspkernels/spher_main
