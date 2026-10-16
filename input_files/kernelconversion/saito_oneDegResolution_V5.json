@@ -32,6 +32,10 @@
         "TAMUdust2020 irregular hexahedra ensemble (Saito et al. 2021, JAS 78, 2089), nominal sphericity 0.7 (ensemble Psi = 0.70064 from TAMUdust2020 A and V); GRASP ratio label 2.986"
     ],
     "globalAttrs": {
-        "history": "V5 (2026-10): hexahedra kernels = TAMUdust2020-in-GRASP-kernel-format_2024 kernels_299_* multiplied by alpha = 1.42726 (they had been built as Q_A*pi*r_v^2/V instead of C/V = Q_A*A/V and were low by the sphericity); nominal TAMUdust2020 sphericity S = 0.7, ensemble sphericity from TAMUdust2020 A and V Psi = 0.70064. Sphere entry (ratio 1) added: direct-Mie sphere kernel on the same grid (replaces the interpolated sphere kernel shipped with the 2024 hexahedra, which was 6% high)."
-    }
+        "history": "V5 (2026-10): hexahedra kernels = TAMUdust2020-in-GRASP-kernel-format_2024 kernels_299_* multiplied by alpha = 1.42726 (they had been built as Q_A*pi*r_v^2/V instead of C/V = Q_A*A/V and were low by the sphericity); nominal TAMUdust2020 sphericity S = 0.7, ensemble sphericity from TAMUdust2020 A and V Psi = 0.70064. Sphere entry (ratio 1) added: direct-Mie sphere kernel on the same grid (replaces the interpolated sphere kernel shipped with the 2024 hexahedra, which was 6% high). The sphere entry is read from sphere_exact_for_netCDF/ (exact values); the GRASP text files in the main folder carry a local sum-conserving positivity correction of K33 (<= 40 deg) and K44 (<= 50 deg), which the standard GRASP distribution requires."
+    },
+    "ratioPaths": [
+        "/Users/wrespino/Synced/NIP_Morphology_Polarimetry/TAMUdust2020_kernels/TAMUdust2020-in-GRASP-kernel-format_V5-2026-10/sphere_exact_for_netCDF",
+        "/Users/wrespino/Synced/NIP_Morphology_Polarimetry/TAMUdust2020_kernels/TAMUdust2020-in-GRASP-kernel-format_V5-2026-10"
+    ]
 }

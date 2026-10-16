@@ -33,12 +33,17 @@ def fun(ifn, dest):
   shapeDescription = data.get('shapeDescription', None) # list, one description string per entry in ratios
   globalAttrs = data.get('globalAttrs', {}) # extra global attributes (e.g. history)
   checkLargeX = data.get('checkLargeX', True)
+  ratioPaths = data.get('ratioPaths', None) # optional list, one kernel folder per entry in ratios (default: path for all); grids must match
 
   pfx = path
   sizes, x, lamb = getSizes(pfx)
+  rpaths = ratioPaths if ratioPaths is not None else [pfx]*len(ratios)
+  for rp in rpaths: # all folders must share the radius grid and wavelength
+    s2, x2, l2 = getSizes(rp)
+    assert np.allclose(s2, sizes, rtol=1e-6) and abs(l2 - lamb) < 1e-6, 'grid1 in %s differs from %s' % (rp, pfx)
 
   if ratioValues is None: # exact ratio from the kernel header (e.g. 0.3349 or 2.986), not the rounded file name label
-    ratnums = [float(open(os.path.join(pfx, '%s_%s_00.txt'%(fnpre, r))).readline().split()[2]) for r in ratios]
+    ratnums = [float(open(os.path.join(rp, '%s_%s_00.txt'%(fnpre, r))).readline().split()[2]) for r, rp in zip(ratios, rpaths)]
   else:
     ratnums = [float(r) for r in ratioValues]
 
@@ -49,16 +54,16 @@ def fun(ifn, dest):
   for rati in range(len(ratios)):
     ratio = ratios[rati]
     print("ri %d of %d, ratio %s"%(rati+1, len(ratios), ratios[rati]))
-    exti, absorb, rilist = read00(pfx, ratio, fnpre, contlen)
+    exti, absorb, rilist = read00(rpaths[rati], ratio, fnpre, contlen)
 
     # get refractive indices
     mi = [rilist[i][1] for i in range(milen)]
     mr = [rilist[i*milen][0] for i in range(mrlen)]
 
-    angs = readScaAngles(pfx, ratio, fnpre, scathdrlen)
+    angs = readScaAngles(rpaths[rati], ratio, fnpre, scathdrlen)
     scadata = []
     for ei, ele in enumerate(elems):
-      thisscadata = readScatEle(pfx, ratio, ele, fnpre, scathdrlen, scatcontlen, scatelemlen)
+      thisscadata = readScatEle(rpaths[rati], ratio, ele, fnpre, scathdrlen, scatcontlen, scatelemlen)
       scadata.append(np.array(thisscadata)) # (refractive index, x, angle); numpy keeps memory use down
     
     allext.append(exti)
@@ -219,7 +224,7 @@ def fun(ifn, dest):
     ncdf.variables['g'][:,:,:,:] = g
 
     # V5 metadata: definitions of all variables, sphericity, shape descriptions and global attributes
-    gattrs = {'source_kernels': os.path.abspath(pfx), 'source_kernel_ratios': ', '.join(ratios),
+    gattrs = {'source_kernels': ', '.join('%s: %s' % (r, os.path.abspath(rp)) for r, rp in zip(ratios, rpaths)),
               'renormUpperX': xMaxRenorm, 'angFwdPeak': angFwdPeak, 'kernelScaleFact': kernelScaleFact,
               'conversion_settings': json.dumps(data), 'geosmie_commit': gitCommit(),
               'created': datetime.datetime.now().isoformat(timespec='seconds')}

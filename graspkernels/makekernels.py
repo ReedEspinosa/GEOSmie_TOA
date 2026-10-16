@@ -44,6 +44,9 @@ Entry point: fun(ifn, dest), with ifn a JSON file in input_files/kernelgeneratio
                 (nothing; only rewrite the text files, e.g. with other digits). Without
                 reuseFrom the whole kernel is computed, with the same result.
   digits        significant digits of the text kernel values (default 7, as KERNELS_BASE; max 8)
+  graspPositivity  if true, the text files (not raw_kernels.npz) get the local sum-conserving correction of
+                grasppositivity.fix, so that K33 (<= 40 deg) and K44 (<= 50 deg) are positive as the standard
+                GRASP distribution requires; statistics go to <fnpre>_<ratioName>_positivity.json
 
 Each refractive index is one spher_tri job; finished jobs are skipped on a rerun,
 so an interrupted build can be resumed.
@@ -60,6 +63,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import graspkerneltext as gkt
+import grasppositivity
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 EXE = os.path.join(HERE, 'spher_tri')
@@ -69,7 +73,8 @@ DEFAULTS = {'fnpre': 'kernels', 'ratioName': '100', 'ratioValue': 1.0,
             'elems': ['11', '12', '22', '33', '34', '44'], 'edgeNodes': 'grasp',
             'quadNK': 10, 'quadPtsPerHalf': [[1e9, 400]], 'quadMiRef': 0.0, 'quadMiMinFactor': 1.0,
             'ddelt': 1e-10, 'mode': 7,
-            'nproc': 1, 'nice': 0, 'keepWork': False, 'writeConversionJson': True, 'digits': 7}
+            'nproc': 1, 'nice': 0, 'keepWork': False, 'writeConversionJson': True, 'digits': 7,
+            'graspPositivity': False}
 
 
 def load(ifn):
@@ -229,6 +234,12 @@ def fun(ifn, dest):
 
     print('writing GRASP text kernels to %s' % outdir)
     shutil.copyfile(cfg['gridFile'], os.path.join(outdir, 'grid1.dat'))
+    if cfg['graspPositivity']:
+        pm, pstats = grasppositivity.fix(pm, angles)
+        pstats['violations_after'] = grasppositivity.violations(pm, angles)
+        print('GRASP positivity correction: %s' % pstats)
+        with open(os.path.join(outdir, '%s_%s_positivity.json' % (cfg['fnpre'], cfg['ratioName'])), 'w') as fp:
+            json.dump(pstats, fp, indent=4)
     gkt.write_kernels(outdir, cfg['fnpre'], cfg['ratioName'], cfg['ratioValue'], cfg['wavelength'],
                       r, mr, mi, ext, ext - sca, angles, pm, digits=cfg['digits'])
     if cfg['writeConversionJson']:

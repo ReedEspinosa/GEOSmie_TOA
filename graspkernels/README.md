@@ -38,6 +38,16 @@ Its first use (October 2026) corrects the TAMUdust2020 hexahedra kernels. They h
 
 The sphere kernel was rewritten with 8 digits from its `raw_kernels.npz` (`grasp_sphere_tamu273_8digits.json`, `reuseRecompute = "none"`).
 
+## GRASP positivity (`grasppositivity.py`)
+
+The standard GRASP distribution stores element 33 as log(K33) for angles ≤ 40° and element 44 as log(K44) for angles ≤ 50° (`dls_fixget_bin.f90`), and interpolates those logs in refractive index. Size-resolved sphere kernels have negative node values there near Mie resonances: on the TAMUdust2020 grid, 1,479 K33 and 1,950 K44 values, at x ≈ 5–19 and 15–50°. GRASP then stops with a NaN.
+
+`graspPositivity: true` in a generation config applies `grasppositivity.fix` to the text files only; `raw_kernels.npz` keeps the exact values. Around each negative run it takes the smallest window of size nodes with a positive sum (median 3, at most 7 nodes) and sets F/F11 there to its K11-weighted mean. Σ K over the window is conserved, so a size distribution that is flat across the window is unaffected. Maximum change in size-integrated F33/F11 and F44/F11 for lognormal volume modes, over all refractive indices and angles: 0.12 (σ = 0.1), 0.019 (0.2), 0.008 (0.3), 0.004 (0.5), 0.003 (0.7).
+
+The standard GRASP v1.1.3 sphere kernel holds 1000.0 at exactly the 23 places (all at m_i = 0.5) where its true K33 (≤ 40°) or K44 (≤ 50°) is negative.
+
+Config: `grasp_sphere_tamu273_8digits_grasppositive.json`. netCDF files should be built from the exact values (`convertkernels` `ratioPaths`).
+
 ## What is computed
 
 For node k with hat function T_k(u), u = ln r (0 at the neighbouring nodes, 1 at r_k):

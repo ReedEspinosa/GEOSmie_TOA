@@ -34,6 +34,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import graspkerneltext as gkt
+import grasppositivity
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -87,6 +88,7 @@ def fun(ifn, dest):
             'source_md5': {n: md5(os.path.join(src, n)) for n in names + ['grid1.dat']},
             'factor': factor, 'factorNote': cfg.get('factorNote', ''),
             'output_md5': {n: md5(os.path.join(outdir, n)) for n in names},
+            'grasp_positivity_violations': grasppositivity.violations(pm, k['angles']),
             'geosmie_commit': git_commit(), 'created': datetime.datetime.now().isoformat(timespec='seconds'),
             'settings': cfg}
     with open(os.path.join(outdir, '%s_%s_scaling.json' % (fnpre, ratio)), 'w') as fp:
